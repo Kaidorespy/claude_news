@@ -30,6 +30,7 @@ python run.py doctor
 - Article body enrichment before rating
 - Hourly auto-refresh while the UI is open
 - Source toggles for filtering and targeted refreshes
+- Local search, unread-only, and priority-only filters
 - `doctor` command for local diagnostics
 
 ## Sources
@@ -68,6 +69,8 @@ python run.py refresh --sources ANTH,HN,GOOG
 python run.py refresh --full
 python run.py show      # Show feed in terminal
 python run.py show --limit 25 --min-stars 4
+python run.py show --query "claude code" --sources HN,RDIT
+python run.py show --priority --unread
 python run.py stats     # Show database stats
 python run.py doctor    # Check setup/source health
 ```

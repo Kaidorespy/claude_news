@@ -126,9 +126,20 @@ class ClaudeNewsFeed:
             "rating_failed": rating_failed,
         }
 
-    def get_feed(self, min_stars: int = 0, limit: int = 30) -> list:
+    def get_feed(self, min_stars: int = 0, limit: int = 30,
+                 sources: list = None, query: str = "",
+                 unread_only: bool = False,
+                 include_unrated: bool = True) -> list:
         """Get feed items, optionally filtered by stars"""
-        return get_items(self.conn, min_stars=min_stars, limit=limit)
+        return get_items(
+            self.conn,
+            min_stars=min_stars,
+            limit=limit,
+            include_unrated=include_unrated,
+            sources=sources,
+            query=query,
+            unread_only=unread_only,
+        )
 
     def get_high_priority(self, limit: int = 10) -> list:
         """Get 4-5 star items only"""

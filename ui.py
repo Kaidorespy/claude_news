@@ -195,8 +195,9 @@ class SourceFilter:
 class NewsItemWidget:
     """Single news item row"""
 
-    def __init__(self, parent, item, on_click):
+    def __init__(self, parent, item, on_click, on_open):
         self.item = item
+        self.on_open = on_open
         self.frame = tk.Frame(parent, bg='#0a0a0a')
 
         # Source
@@ -229,7 +230,7 @@ class NewsItemWidget:
             self.frame,
             text=item['title'],
             font=("Consolas", 10),
-            fg="#f8f8f2",
+            fg=self._title_color(),
             bg="#0a0a0a",
             cursor="hand2",
             anchor="w",
@@ -237,9 +238,9 @@ class NewsItemWidget:
             wraplength=550
         )
         self.title.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.title.bind("<Button-1>", lambda e: webbrowser.open(item['url']))
+        self.title.bind("<Button-1>", lambda e: self.open_url())
         self.title.bind("<Enter>", lambda e: self.title.config(fg="#8be9fd"))
-        self.title.bind("<Leave>", lambda e: self.title.config(fg="#f8f8f2"))
+        self.title.bind("<Leave>", lambda e: self.title.config(fg=self._title_color()))
 
         # Separator
         tk.Label(self.frame, text="│", fg="#404040", bg="#0a0a0a",
@@ -268,6 +269,15 @@ class NewsItemWidget:
 
         # Hover tooltip: show the LLM's quick reaction (tldr -> first_impressions)
         Tooltip(self.stars, lambda: self._tooltip_text())
+
+    def _title_color(self):
+        return "#808080" if self.item.get('read') else "#f8f8f2"
+
+    def open_url(self):
+        webbrowser.open(self.item['url'])
+        self.item['read'] = 1
+        self.title.config(fg=self._title_color())
+        self.on_open(self.item)
 
     def _tooltip_text(self) -> str:
         try:
@@ -434,6 +444,55 @@ class ClaudeNewsUI:
         )
         self.source_filter.frame.pack(fill=tk.X, pady=(0, 5), padx=10)
 
+        mode_row = tk.Frame(self.container, bg="#0a0a0a")
+        mode_row.pack(fill=tk.X, pady=(0, 5), padx=10)
+
+        tk.Label(
+            mode_row,
+            text="SEARCH",
+            font=("Consolas", 9),
+            fg="#606060",
+            bg="#0a0a0a",
+        ).pack(side=tk.LEFT, padx=(0, 6))
+
+        self.search_var = tk.StringVar()
+        self.search_entry = tk.Entry(
+            mode_row,
+            textvariable=self.search_var,
+            font=("Consolas", 10),
+            fg="#f8f8f2",
+            bg="#1a1a1a",
+            insertbackground="#f8f8f2",
+            relief=tk.FLAT,
+        )
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3)
+        self.search_entry.bind("<KeyRelease>", self.on_search_change)
+
+        self.priority_only = False
+        self.unread_only = False
+        self.priority_btn = tk.Label(
+            mode_row,
+            text="[PRIORITY]",
+            font=("Consolas", 10),
+            fg="#606060",
+            bg="#0a0a0a",
+            cursor="hand2",
+            padx=6,
+        )
+        self.unread_btn = tk.Label(
+            mode_row,
+            text="[UNREAD]",
+            font=("Consolas", 10),
+            fg="#606060",
+            bg="#0a0a0a",
+            cursor="hand2",
+            padx=6,
+        )
+        self.priority_btn.pack(side=tk.RIGHT, padx=(6, 0))
+        self.unread_btn.pack(side=tk.RIGHT, padx=(6, 0))
+        self.priority_btn.bind("<Button-1>", lambda e: self.toggle_priority())
+        self.unread_btn.bind("<Button-1>", lambda e: self.toggle_unread())
+
         # Separator
         tk.Frame(self.container, bg='#404040', height=1).pack(fill=tk.X, pady=5)
 
@@ -450,18 +509,29 @@ class ClaudeNewsUI:
 
         # Refresh state
         self.refreshing = False
+        self.search_after_id = None
 
         # Load feed
         self.current_filter = []
         self.current_sources = self.source_filter.get_active_sources()
+        self.update_mode_buttons()
         self.load_feed()
 
     def load_feed(self):
         """Load items from database"""
         from database import get_connection, get_items, get_stats
 
-        conn = get_connection()
-        items = get_items(conn, min_stars=0, limit=30)
+        conn = get_connection(CONFIG.db_path)
+        min_stars = 4 if self.priority_only else 0
+        items = get_items(
+            conn,
+            min_stars=min_stars,
+            limit=100,
+            include_unrated=not self.priority_only,
+            sources=sorted(self.current_sources),
+            query=self.search_var.get().strip(),
+            unread_only=self.unread_only,
+        )
         stats = get_stats(conn)
         conn.close()
 
@@ -476,6 +546,8 @@ class ClaudeNewsUI:
         text = f"{total} items | {priority} priority"
         if unrated:
             text += f" | {unrated} unrated"
+        if stats.get("unread"):
+            text += f" | {stats['unread']} unread"
         self.status_label.config(text=text)
 
     def display_items(self, items):
@@ -495,8 +567,8 @@ class ClaudeNewsUI:
             items = [i for i in items if i.get('source') in self.current_sources]
 
         # Create widgets
-        for item in items:
-            widget = NewsItemWidget(self.feed_frame, item, self.show_analysis)
+        for item in items[:30]:
+            widget = NewsItemWidget(self.feed_frame, item, self.show_analysis, self.mark_item_read)
             widget.frame.pack(fill=tk.X, pady=1)
             self.item_widgets.append(widget)
 
@@ -519,6 +591,37 @@ class ClaudeNewsUI:
         """Handle source filter change"""
         self.current_sources = active_sources
         self.load_feed()
+
+    def on_search_change(self, _event=None):
+        """Debounce local search slightly so typing stays smooth."""
+        if self.search_after_id:
+            self.root.after_cancel(self.search_after_id)
+        self.search_after_id = self.root.after(180, self.load_feed)
+
+    def toggle_priority(self):
+        self.priority_only = not self.priority_only
+        self.update_mode_buttons()
+        self.load_feed()
+
+    def toggle_unread(self):
+        self.unread_only = not self.unread_only
+        self.update_mode_buttons()
+        self.load_feed()
+
+    def update_mode_buttons(self):
+        self.priority_btn.config(fg="#ffd96b" if self.priority_only else "#606060")
+        self.unread_btn.config(fg="#50fa7b" if self.unread_only else "#606060")
+
+    def mark_item_read(self, item):
+        from database import get_connection, get_stats, mark_read
+
+        conn = get_connection(CONFIG.db_path)
+        mark_read(conn, item['content_hash'])
+        stats = get_stats(conn)
+        conn.close()
+        self.update_status(stats)
+        if self.unread_only:
+            self.load_feed()
 
     def show_analysis(self, item):
         """Show analysis view for an item"""

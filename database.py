@@ -124,26 +124,51 @@ def get_items(
     conn: sqlite3.Connection,
     min_stars: int = 0,
     limit: int = 50,
-    include_unrated: bool = True
+    include_unrated: bool = True,
+    sources: Optional[List[str]] = None,
+    query: str = "",
+    unread_only: bool = False,
 ) -> List[dict]:
-    """Get items, optionally filtered by star rating"""
+    """Get items, optionally filtered by rating, source, text, and read state."""
+    where = []
+    params = []
 
     if include_unrated:
-        query = """
-            SELECT * FROM news_items
-            WHERE stars >= ? OR stars = 0
-            ORDER BY published DESC
-            LIMIT ?
-        """
+        where.append("(stars >= ? OR stars = 0)")
     else:
-        query = """
-            SELECT * FROM news_items
-            WHERE stars >= ?
-            ORDER BY published DESC
-            LIMIT ?
-        """
+        where.append("stars >= ?")
+    params.append(min_stars)
 
-    cursor = conn.execute(query, (min_stars, limit))
+    if sources:
+        placeholders = ",".join("?" for _ in sources)
+        where.append(f"source IN ({placeholders})")
+        params.extend(sources)
+
+    if query:
+        like = f"%{query.strip()}%"
+        where.append("""
+            (
+                title LIKE ?
+                OR summary LIKE ?
+                OR body LIKE ?
+                OR analysis LIKE ?
+                OR url LIKE ?
+            )
+        """)
+        params.extend([like, like, like, like, like])
+
+    if unread_only:
+        where.append("read = 0")
+
+    sql = f"""
+        SELECT * FROM news_items
+        WHERE {' AND '.join(where)}
+        ORDER BY published DESC
+        LIMIT ?
+    """
+    params.append(limit)
+
+    cursor = conn.execute(sql, params)
     return [dict(row) for row in cursor.fetchall()]
 
 
@@ -213,6 +238,9 @@ def get_stats(conn: sqlite3.Connection) -> dict:
 
     cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars >= 4")
     stats['high_priority'] = cursor.fetchone()[0]
+
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE read = 0")
+    stats['unread'] = cursor.fetchone()[0]
 
     cursor = conn.execute("""
         SELECT body_status, COUNT(*) as cnt

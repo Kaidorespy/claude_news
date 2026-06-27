@@ -28,7 +28,8 @@ def parse_sources(value: str):
 def print_items(items):
     for item in items:
         stars = "★" * item["stars"] + "☆" * (5 - item["stars"])
-        print(f"[{item['source']:4}] {item['title'][:45]:45} {stars}")
+        read_marker = " " if item.get("read") else "*"
+        print(f"{read_marker}[{item['source']:4}] {item['title'][:45]:45} {stars}")
 
 
 def build_parser():
@@ -42,6 +43,10 @@ def build_parser():
     show = sub.add_parser("show", help="Show feed in terminal")
     show.add_argument("--limit", type=int, default=15)
     show.add_argument("--min-stars", type=int, default=0)
+    show.add_argument("--query", "-q", default="", help="Search local title/summary/body/analysis")
+    show.add_argument("--sources", help="Comma-separated source codes")
+    show.add_argument("--unread", action="store_true", help="Only show unread items")
+    show.add_argument("--priority", action="store_true", help="Only show 4+ star rated items")
 
     refresh = sub.add_parser("refresh", help="Fetch, enrich, and rate items")
     refresh.add_argument("--no-rate", action="store_true", help="Fetch/enrich without rating")
@@ -82,7 +87,15 @@ def main():
 
     if command == "show":
         feed = ClaudeNewsFeed()
-        items = feed.get_feed(min_stars=args.min_stars, limit=args.limit)
+        min_stars = 4 if args.priority else args.min_stars
+        items = feed.get_feed(
+            min_stars=min_stars,
+            limit=args.limit,
+            sources=sorted(parse_sources(args.sources) or []),
+            query=args.query,
+            unread_only=args.unread,
+            include_unrated=not args.priority,
+        )
         print_items(items)
         return
 
