@@ -7,6 +7,7 @@ from fetcher import NewsFeedAggregator
 from database import (
     get_connection, add_item, get_items, get_unrated_items,
     update_rating, get_stats, get_unenriched_items, update_body,
+    mark_all_read,
 )
 from rater import NewsRater, RaterConfig
 from enricher import fetch_body
@@ -129,7 +130,8 @@ class ClaudeNewsFeed:
     def get_feed(self, min_stars: int = 0, limit: int = 30,
                  sources: list = None, query: str = "",
                  unread_only: bool = False,
-                 include_unrated: bool = True) -> list:
+                 include_unrated: bool = True,
+                 hidden: bool = False) -> list:
         """Get feed items, optionally filtered by stars"""
         return get_items(
             self.conn,
@@ -139,6 +141,7 @@ class ClaudeNewsFeed:
             sources=sources,
             query=query,
             unread_only=unread_only,
+            hidden=hidden,
         )
 
     def get_high_priority(self, limit: int = 10) -> list:
@@ -148,6 +151,73 @@ class ClaudeNewsFeed:
     def stats(self) -> dict:
         """Get feed statistics"""
         return get_stats(self.conn)
+
+    def rerate(self, items: list, delay: float = None) -> dict:
+        """Rerate explicit items using current interests."""
+        delay = CONFIG.refresh_delay_seconds if delay is None else delay
+        interests = load_interests()
+        rated = 0
+        failed = 0
+
+        for i, item in enumerate(items, 1):
+            print(f"  [{i}/{len(items)}] {item['title'][:50]}...")
+            stars, analysis = self.rater.rate_item(item, interests=interests)
+            update_rating(self.conn, item['content_hash'], stars, analysis)
+            if stars > 0:
+                rated += 1
+            else:
+                failed += 1
+            if i < len(items):
+                time.sleep(delay)
+
+        return {"selected": len(items), "rated": rated, "failed": failed}
+
+    def rerate_filtered(self, limit: int = 10, min_stars: int = 0,
+                        sources: list = None, query: str = "",
+                        unread_only: bool = False,
+                        unrated_only: bool = False,
+                        priority_only: bool = False) -> dict:
+        """Rerate items selected by feed filters."""
+        if unrated_only:
+            items = get_unrated_items(self.conn, limit=limit)
+            if sources or query or unread_only:
+                source_set = set(sources or [])
+                q = query.lower().strip()
+                items = [
+                    item for item in items
+                    if (not source_set or item.get('source') in source_set)
+                    and (not unread_only or not item.get('read'))
+                    and (
+                        not q
+                        or q in (item.get('title') or '').lower()
+                        or q in (item.get('summary') or '').lower()
+                        or q in (item.get('body') or '').lower()
+                        or q in (item.get('analysis') or '').lower()
+                        or q in (item.get('url') or '').lower()
+                    )
+                ][:limit]
+        else:
+            items = self.get_feed(
+                min_stars=4 if priority_only else min_stars,
+                limit=limit,
+                sources=sources,
+                query=query,
+                unread_only=unread_only,
+                include_unrated=not priority_only,
+            )
+
+        return self.rerate(items)
+
+    def mark_filtered_read(self, min_stars: int = 0, sources: list = None,
+                           query: str = "", priority_only: bool = False) -> int:
+        """Mark a filtered visible set as read."""
+        return mark_all_read(
+            self.conn,
+            min_stars=min_stars,
+            sources=sources,
+            query=query,
+            priority_only=priority_only,
+        )
 
 
 def main():

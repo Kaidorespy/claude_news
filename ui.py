@@ -368,6 +368,122 @@ class AnalysisView:
         self.content.config(state=tk.DISABLED)
 
 
+class ActionAnalysisView:
+    """Detailed analysis view with curation actions."""
+
+    def __init__(self, parent, on_back, on_open, on_rerate, on_hide):
+        self.frame = tk.Frame(parent, bg='#0a0a0a')
+        self.on_back = on_back
+        self.on_open = on_open
+        self.on_rerate = on_rerate
+        self.on_hide = on_hide
+        self.item = None
+
+        action_row = tk.Frame(self.frame, bg="#0a0a0a")
+        action_row.pack(fill=tk.X, pady=10, padx=10)
+
+        self.back = tk.Label(
+            action_row,
+            text="< BACK",
+            font=("Consolas", 12, "bold"),
+            fg="#ff79c6",
+            bg="#0a0a0a",
+            cursor="hand2"
+        )
+        self.back.pack(side=tk.LEFT)
+        self.back.bind("<Button-1>", lambda e: on_back())
+        self.back.bind("<Enter>", lambda e: self.back.config(fg="#ff5555"))
+        self.back.bind("<Leave>", lambda e: self.back.config(fg="#ff79c6"))
+
+        self.hide_btn = self._action_label(action_row, "[HIDE]", "#ff5555")
+        self.rerate_btn = self._action_label(action_row, "[RERATE]", "#ffd96b")
+        self.open_btn = self._action_label(action_row, "[OPEN]", "#50fa7b")
+        self.open_btn.bind("<Button-1>", lambda e: self.item and self.on_open(self.item))
+        self.rerate_btn.bind("<Button-1>", lambda e: self.item and self.on_rerate(self.item))
+        self.hide_btn.bind("<Button-1>", lambda e: self.item and self.on_hide(self.item))
+
+        self.content = tk.Text(
+            self.frame,
+            font=("Consolas", 11),
+            fg="#f8f8f2",
+            bg="#0a0a0a",
+            relief=tk.FLAT,
+            wrap=tk.WORD,
+            padx=15,
+            pady=10,
+            cursor="arrow"
+        )
+        self.content.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.content.config(state=tk.DISABLED)
+
+    def _action_label(self, parent, text, color):
+        label = tk.Label(
+            parent,
+            text=text,
+            font=("Consolas", 10),
+            fg=color,
+            bg="#0a0a0a",
+            cursor="hand2",
+            padx=8,
+        )
+        label.pack(side=tk.RIGHT)
+        return label
+
+    def show(self, item):
+        """Display analysis for an item."""
+        self.item = item
+        self.content.config(state=tk.NORMAL)
+        self.content.delete(1.0, tk.END)
+
+        self.content.insert(tk.END, f"{item['title']}\n", "title")
+        stars = "*" * item.get('stars', 0) + "." * (5 - item.get('stars', 0))
+        read_state = "read" if item.get('read') else "unread"
+        meta = f"{item.get('source', 'UNK')} | {stars} | {read_state} | {item.get('published', '')}"
+        self.content.insert(tk.END, f"{meta}\n", "meta")
+        self.content.insert(tk.END, f"{'-'*50}\n\n", "sep")
+
+        try:
+            analysis = json.loads(item.get('analysis', '{}'))
+        except:
+            analysis = {}
+
+        sections = [
+            ("FIRST IMPRESSIONS", analysis.get('first_impressions', 'No analysis available')),
+            ("IMPLICATIONS", analysis.get('implications', '')),
+            ("ACTION ITEMS", analysis.get('action_items', 'None')),
+            ("TL;DR", analysis.get('tldr', '')),
+        ]
+
+        for header, content in sections:
+            if content:
+                self.content.insert(tk.END, f"{header}:\n", "header")
+                self.content.insert(tk.END, f"{content}\n\n", "body")
+
+        summary = (item.get('summary') or '').strip()
+        body = (item.get('body') or '').strip()
+        if summary:
+            self.content.insert(tk.END, "SUMMARY:\n", "header")
+            self.content.insert(tk.END, f"{summary}\n\n", "body")
+        if body:
+            snippet = body[:1200].rsplit(" ", 1)[0]
+            if len(body) > len(snippet):
+                snippet += "..."
+            self.content.insert(tk.END, "BODY SNIPPET:\n", "header")
+            self.content.insert(tk.END, f"{snippet}\n\n", "body")
+
+        self.content.insert(tk.END, f"\n{'-'*50}\n", "sep")
+        self.content.insert(tk.END, f"URL: {item['url']}\n", "link")
+
+        self.content.tag_config("title", font=("Consolas", 14, "bold"), foreground="#50fa7b")
+        self.content.tag_config("meta", foreground="#606060")
+        self.content.tag_config("sep", foreground="#404040")
+        self.content.tag_config("header", font=("Consolas", 11, "bold"), foreground="#ff79c6")
+        self.content.tag_config("body", foreground="#f8f8f2")
+        self.content.tag_config("link", foreground="#8be9fd")
+
+        self.content.config(state=tk.DISABLED)
+
+
 class ClaudeNewsUI:
     """Main UI window"""
 
@@ -488,10 +604,21 @@ class ClaudeNewsUI:
             cursor="hand2",
             padx=6,
         )
+        self.mark_read_btn = tk.Label(
+            mode_row,
+            text="[MARK READ]",
+            font=("Consolas", 10),
+            fg="#8be9fd",
+            bg="#0a0a0a",
+            cursor="hand2",
+            padx=6,
+        )
         self.priority_btn.pack(side=tk.RIGHT, padx=(6, 0))
         self.unread_btn.pack(side=tk.RIGHT, padx=(6, 0))
+        self.mark_read_btn.pack(side=tk.RIGHT, padx=(6, 0))
         self.priority_btn.bind("<Button-1>", lambda e: self.toggle_priority())
         self.unread_btn.bind("<Button-1>", lambda e: self.toggle_unread())
+        self.mark_read_btn.bind("<Button-1>", lambda e: self.mark_current_filter_read())
 
         # Separator
         tk.Frame(self.container, bg='#404040', height=1).pack(fill=tk.X, pady=5)
@@ -501,7 +628,13 @@ class ClaudeNewsUI:
         self.feed_frame.pack(fill=tk.BOTH, expand=True)
 
         # Analysis view (hidden initially)
-        self.analysis_view = AnalysisView(self.container, self.show_feed)
+        self.analysis_view = ActionAnalysisView(
+            self.container,
+            self.show_feed,
+            self.open_item,
+            self.rerate_item,
+            self.hide_item,
+        )
 
         # Items list
         self.item_widgets = []
@@ -623,8 +756,71 @@ class ClaudeNewsUI:
         if self.unread_only:
             self.load_feed()
 
+    def mark_current_filter_read(self):
+        from feed import ClaudeNewsFeed
+
+        min_stars = 4 if self.priority_only else 0
+        feed = ClaudeNewsFeed()
+        changed = feed.mark_filtered_read(
+            min_stars=min_stars,
+            sources=sorted(self.current_sources),
+            query=self.search_var.get().strip(),
+            priority_only=self.priority_only,
+        )
+        self.status_label.config(text=f"marked {changed} read")
+        self.load_feed()
+
+    def open_item(self, item):
+        webbrowser.open(item['url'])
+        item['read'] = 1
+        self.mark_item_read(item)
+        self.analysis_view.show(item)
+
+    def rerate_item(self, item):
+        self.analysis_view.rerate_btn.config(text="[RATING...]", fg="#ffd96b")
+
+        def worker():
+            try:
+                from feed import ClaudeNewsFeed
+                from database import get_item_by_hash
+
+                feed = ClaudeNewsFeed()
+                result = feed.rerate([item], delay=0)
+                updated = get_item_by_hash(feed.conn, item['content_hash'])
+                self.root.after(0, lambda: self._rerate_done(result, updated or item))
+            except Exception as e:
+                err = str(e)
+                self.root.after(0, lambda: self._rerate_failed(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _rerate_done(self, result, item):
+        self.analysis_view.rerate_btn.config(text="[RERATE]", fg="#ffd96b")
+        self.analysis_view.show(item)
+        self.load_feed()
+
+    def _rerate_failed(self, err):
+        print(f"Rerate failed: {err}")
+        self.analysis_view.rerate_btn.config(text="[RERATE ERR]", fg="#ff5555")
+        self.root.after(5000, lambda: self.analysis_view.rerate_btn.config(
+            text="[RERATE]", fg="#ffd96b"
+        ))
+
+    def hide_item(self, item):
+        from database import get_connection, get_stats, hide_item
+
+        conn = get_connection(CONFIG.db_path)
+        hide_item(conn, item['content_hash'])
+        stats = get_stats(conn)
+        conn.close()
+        self.update_status(stats)
+        self.show_feed()
+        self.load_feed()
+
     def show_analysis(self, item):
         """Show analysis view for an item"""
+        item['read'] = 1
+        self.mark_item_read(item)
         self.feed_frame.pack_forget()
         self.analysis_view.frame.pack(fill=tk.BOTH, expand=True)
         self.analysis_view.show(item)

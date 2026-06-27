@@ -70,6 +70,12 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass
 
+    # Migration: soft-hide items without deleting history
+    try:
+        conn.execute("ALTER TABLE news_items ADD COLUMN hidden INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+
     conn.execute("""
         UPDATE news_items
         SET body_status = CASE
@@ -128,6 +134,7 @@ def get_items(
     sources: Optional[List[str]] = None,
     query: str = "",
     unread_only: bool = False,
+    hidden: bool = False,
 ) -> List[dict]:
     """Get items, optionally filtered by rating, source, text, and read state."""
     where = []
@@ -160,6 +167,9 @@ def get_items(
     if unread_only:
         where.append("read = 0")
 
+    if not hidden:
+        where.append("COALESCE(hidden, 0) = 0")
+
     sql = f"""
         SELECT * FROM news_items
         WHERE {' AND '.join(where)}
@@ -176,7 +186,7 @@ def get_unrated_items(conn: sqlite3.Connection, limit: int = 10) -> List[dict]:
     """Get items that haven't been rated yet"""
     cursor = conn.execute("""
         SELECT * FROM news_items
-        WHERE stars = 0
+        WHERE stars = 0 AND COALESCE(hidden, 0) = 0
         ORDER BY published DESC
         LIMIT ?
     """, (limit,))
@@ -226,21 +236,93 @@ def mark_read(conn: sqlite3.Connection, content_hash: str):
     conn.commit()
 
 
+def mark_unread(conn: sqlite3.Connection, content_hash: str):
+    """Mark an item as unread"""
+    conn.execute("""
+        UPDATE news_items SET read = 0 WHERE content_hash = ?
+    """, (content_hash,))
+    conn.commit()
+
+
+def hide_item(conn: sqlite3.Connection, content_hash: str):
+    """Soft-hide an item from normal feed views"""
+    conn.execute("""
+        UPDATE news_items SET hidden = 1 WHERE content_hash = ?
+    """, (content_hash,))
+    conn.commit()
+
+
+def unhide_item(conn: sqlite3.Connection, content_hash: str):
+    """Restore a hidden item"""
+    conn.execute("""
+        UPDATE news_items SET hidden = 0 WHERE content_hash = ?
+    """, (content_hash,))
+    conn.commit()
+
+
+def mark_all_read(
+    conn: sqlite3.Connection,
+    min_stars: int = 0,
+    sources: Optional[List[str]] = None,
+    query: str = "",
+    priority_only: bool = False,
+) -> int:
+    """Mark a filtered visible set read. Returns affected row count."""
+    where = ["COALESCE(hidden, 0) = 0"]
+    params = []
+
+    if priority_only:
+        where.append("stars >= ?")
+        params.append(max(min_stars, 4))
+    else:
+        where.append("(stars >= ? OR stars = 0)")
+        params.append(min_stars)
+
+    if sources:
+        placeholders = ",".join("?" for _ in sources)
+        where.append(f"source IN ({placeholders})")
+        params.extend(sources)
+
+    if query:
+        like = f"%{query.strip()}%"
+        where.append("""
+            (
+                title LIKE ?
+                OR summary LIKE ?
+                OR body LIKE ?
+                OR analysis LIKE ?
+                OR url LIKE ?
+            )
+        """)
+        params.extend([like, like, like, like, like])
+
+    cursor = conn.execute(f"""
+        UPDATE news_items
+        SET read = 1
+        WHERE {' AND '.join(where)}
+    """, params)
+    conn.commit()
+    return cursor.rowcount
+
+
 def get_stats(conn: sqlite3.Connection) -> dict:
     """Get database statistics"""
     stats = {}
 
-    cursor = conn.execute("SELECT COUNT(*) FROM news_items")
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE COALESCE(hidden, 0) = 0")
     stats['total'] = cursor.fetchone()[0]
 
-    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars = 0")
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars = 0 AND COALESCE(hidden, 0) = 0")
     stats['unrated'] = cursor.fetchone()[0]
 
-    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars >= 4")
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars >= 4 AND COALESCE(hidden, 0) = 0")
     stats['high_priority'] = cursor.fetchone()[0]
 
-    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE read = 0")
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE read = 0 AND COALESCE(hidden, 0) = 0")
     stats['unread'] = cursor.fetchone()[0]
+
+    cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE COALESCE(hidden, 0) = 1")
+    stats['hidden'] = cursor.fetchone()[0]
 
     cursor = conn.execute("""
         SELECT body_status, COUNT(*) as cnt
@@ -252,7 +334,12 @@ def get_stats(conn: sqlite3.Connection) -> dict:
         for row in cursor.fetchall()
     }
 
-    cursor = conn.execute("SELECT source, COUNT(*) as cnt FROM news_items GROUP BY source")
+    cursor = conn.execute("""
+        SELECT source, COUNT(*) as cnt
+        FROM news_items
+        WHERE COALESCE(hidden, 0) = 0
+        GROUP BY source
+    """)
     stats['by_source'] = {row['source']: row['cnt'] for row in cursor.fetchall()}
 
     return stats

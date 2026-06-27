@@ -47,6 +47,7 @@ def build_parser():
     show.add_argument("--sources", help="Comma-separated source codes")
     show.add_argument("--unread", action="store_true", help="Only show unread items")
     show.add_argument("--priority", action="store_true", help="Only show 4+ star rated items")
+    show.add_argument("--hidden", action="store_true", help="Include hidden items")
 
     refresh = sub.add_parser("refresh", help="Fetch, enrich, and rate items")
     refresh.add_argument("--no-rate", action="store_true", help="Fetch/enrich without rating")
@@ -57,6 +58,21 @@ def build_parser():
         "--sources",
         help="Comma-separated source codes, e.g. ANTH,HN,GOOG,RDIT,NEWS",
     )
+
+    rerate = sub.add_parser("rerate", help="Rerate existing local items")
+    rerate.add_argument("--limit", type=int, default=10)
+    rerate.add_argument("--min-stars", type=int, default=0)
+    rerate.add_argument("--query", "-q", default="")
+    rerate.add_argument("--sources", help="Comma-separated source codes")
+    rerate.add_argument("--unread", action="store_true")
+    rerate.add_argument("--unrated", action="store_true", help="Only rerate unrated items")
+    rerate.add_argument("--priority", action="store_true", help="Only rerate 4+ star rated items")
+
+    mark_read = sub.add_parser("mark-read", help="Mark filtered visible items read")
+    mark_read.add_argument("--min-stars", type=int, default=0)
+    mark_read.add_argument("--query", "-q", default="")
+    mark_read.add_argument("--sources", help="Comma-separated source codes")
+    mark_read.add_argument("--priority", action="store_true")
 
     return parser
 
@@ -95,8 +111,34 @@ def main():
             query=args.query,
             unread_only=args.unread,
             include_unrated=not args.priority,
+            hidden=args.hidden,
         )
         print_items(items)
+        return
+
+    if command == "rerate":
+        feed = ClaudeNewsFeed()
+        result = feed.rerate_filtered(
+            limit=args.limit,
+            min_stars=args.min_stars,
+            sources=sorted(parse_sources(args.sources) or []),
+            query=args.query,
+            unread_only=args.unread,
+            unrated_only=args.unrated,
+            priority_only=args.priority,
+        )
+        print(f"Done: {result}")
+        return
+
+    if command == "mark-read":
+        feed = ClaudeNewsFeed()
+        changed = feed.mark_filtered_read(
+            min_stars=args.min_stars,
+            sources=sorted(parse_sources(args.sources) or []),
+            query=args.query,
+            priority_only=args.priority,
+        )
+        print(f"Marked read: {changed}")
         return
 
     if command == "refresh":
