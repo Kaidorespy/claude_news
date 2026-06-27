@@ -33,6 +33,7 @@ python run.py doctor
 - Local search, unread-only, and priority-only filters
 - Rerate existing items after changing interest notes
 - Mark filtered sets read and hide/archive low-signal items
+- Daily/weekly vibe reports that extract themes, subplots, unrest, weak signals, and noise
 - `doctor` command for local diagnostics
 
 ## Sources
@@ -76,6 +77,9 @@ python run.py show --priority --unread
 python run.py rerate --unrated --limit 10
 python run.py rerate --query "claude code" --sources HN,RDIT --limit 5
 python run.py mark-read --priority
+python run.py vibe daily
+python run.py vibe weekly
+python run.py vibe latest
 python run.py stats     # Show database stats
 python run.py doctor    # Check setup/source health
 ```

@@ -549,6 +549,17 @@ class ClaudeNewsUI:
         self.notes_btn.pack(side=tk.RIGHT, padx=5)
         self.notes_btn.bind("<Button-1>", lambda e: self.open_notes())
 
+        self.vibe_btn = tk.Label(
+            header,
+            text="[ VIBE ]",
+            font=("Consolas", 10),
+            fg="#8be9fd",
+            bg="#0a0a0a",
+            cursor="hand2"
+        )
+        self.vibe_btn.pack(side=tk.RIGHT, padx=5)
+        self.vibe_btn.bind("<Button-1>", lambda e: self.open_vibe())
+
         # Star filter
         self.filter = StarFilter(self.container, self.on_filter_change)
         self.filter.frame.pack(fill=tk.X, pady=5, padx=10)
@@ -928,6 +939,92 @@ class ClaudeNewsUI:
         close_btn.pack(side=tk.RIGHT, padx=4)
         save_btn.bind("<Button-1>", lambda e: do_save())
         close_btn.bind("<Button-1>", lambda e: do_close())
+
+    def open_vibe(self):
+        """Open a compact daily/weekly vibe report window."""
+        from digest import format_report, latest_report
+
+        win = tk.Toplevel(self.root)
+        win.title("Vibe Report")
+        win.geometry("720x560")
+        win.configure(bg="#0a0a0a")
+        win.transient(self.root)
+
+        top = tk.Frame(win, bg="#0a0a0a")
+        top.pack(fill=tk.X, padx=12, pady=10)
+
+        tk.Label(
+            top,
+            text="VIBE REPORT",
+            font=("Consolas", 12, "bold"),
+            fg="#8be9fd",
+            bg="#0a0a0a",
+        ).pack(side=tk.LEFT)
+
+        text = tk.Text(
+            win,
+            font=("Consolas", 10),
+            fg="#f8f8f2",
+            bg="#111111",
+            insertbackground="#f8f8f2",
+            relief=tk.FLAT,
+            wrap=tk.WORD,
+            padx=10,
+            pady=8,
+        )
+        text.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 8))
+
+        def set_report(body):
+            text.config(state=tk.NORMAL)
+            text.delete("1.0", tk.END)
+            text.insert("1.0", body)
+            text.config(state=tk.DISABLED)
+
+        latest = latest_report()
+        if latest:
+            set_report(format_report(latest))
+        else:
+            set_report("No saved vibe reports yet. Generate a daily or weekly report.")
+
+        actions = tk.Frame(win, bg="#0a0a0a")
+        actions.pack(fill=tk.X, padx=12, pady=(0, 10))
+
+        status = tk.Label(actions, text="", font=("Consolas", 9),
+                          fg="#606060", bg="#0a0a0a")
+        status.pack(side=tk.LEFT)
+
+        def generate(days):
+            status.config(text="generating...")
+            set_report("Generating vibe report...")
+
+            def worker():
+                try:
+                    from digest import VibeDigest, format_report
+                    result = VibeDigest().generate(days=days, limit=80, save=True)
+                    body = format_report(result)
+                    self.root.after(0, lambda: set_report(body))
+                    self.root.after(0, lambda: status.config(
+                        text=f"saved #{result.get('id')} from {result.get('item_count', 0)} items"
+                    ))
+                except Exception as e:
+                    err = str(e)
+                    self.root.after(0, lambda: set_report(f"Vibe generation failed:\n{err}"))
+                    self.root.after(0, lambda: status.config(text="error"))
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        daily_btn = tk.Label(actions, text="[DAILY]", font=("Consolas", 10),
+                             fg="#50fa7b", bg="#0a0a0a", cursor="hand2")
+        weekly_btn = tk.Label(actions, text="[WEEKLY]", font=("Consolas", 10),
+                              fg="#ffd96b", bg="#0a0a0a", cursor="hand2")
+        close_btn = tk.Label(actions, text="[CLOSE]", font=("Consolas", 10),
+                             fg="#ff5555", bg="#0a0a0a", cursor="hand2")
+        close_btn.pack(side=tk.RIGHT, padx=4)
+        weekly_btn.pack(side=tk.RIGHT, padx=4)
+        daily_btn.pack(side=tk.RIGHT, padx=4)
+        daily_btn.bind("<Button-1>", lambda e: generate(1))
+        weekly_btn.bind("<Button-1>", lambda e: generate(7))
+        close_btn.bind("<Button-1>", lambda e: win.destroy())
 
     def set_always_behind(self):
         """Set window to always stay behind others (Windows only)"""

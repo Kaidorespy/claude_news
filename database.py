@@ -42,6 +42,22 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS idx_published ON news_items(published DESC)
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS vibe_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            period TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            item_count INTEGER DEFAULT 0,
+            report_json TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_vibe_generated
+        ON vibe_reports(generated_at DESC)
+    """)
+
     # Migration: add body column for extracted article text
     try:
         conn.execute("ALTER TABLE news_items ADD COLUMN body TEXT DEFAULT ''")
@@ -343,6 +359,75 @@ def get_stats(conn: sqlite3.Connection) -> dict:
     stats['by_source'] = {row['source']: row['cnt'] for row in cursor.fetchall()}
 
     return stats
+
+
+def get_recent_items_for_digest(
+    conn: sqlite3.Connection,
+    days: int = 1,
+    limit: int = 80,
+    sources: Optional[List[str]] = None,
+    min_stars: int = 0,
+) -> List[dict]:
+    """Get recent visible items for theme/vibe extraction."""
+    where = [
+        "COALESCE(hidden, 0) = 0",
+        "datetime(published) >= datetime('now', ?)",
+        "(stars >= ? OR stars = 0)",
+    ]
+    params = [f"-{days} days", min_stars]
+
+    if sources:
+        placeholders = ",".join("?" for _ in sources)
+        where.append(f"source IN ({placeholders})")
+        params.extend(sources)
+
+    sql = f"""
+        SELECT *
+        FROM news_items
+        WHERE {' AND '.join(where)}
+        ORDER BY published DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    cursor = conn.execute(sql, params)
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def save_vibe_report(
+    conn: sqlite3.Connection,
+    period: str,
+    days: int,
+    item_count: int,
+    report_json: str,
+) -> int:
+    """Persist a generated vibe report and return its row id."""
+    cursor = conn.execute("""
+        INSERT INTO vibe_reports (period, days, item_count, report_json)
+        VALUES (?, ?, ?, ?)
+    """, (period, days, item_count, report_json))
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_latest_vibe_report(conn: sqlite3.Connection, period: str = None) -> Optional[dict]:
+    """Fetch the most recent stored vibe report."""
+    if period:
+        cursor = conn.execute("""
+            SELECT *
+            FROM vibe_reports
+            WHERE period = ?
+            ORDER BY generated_at DESC
+            LIMIT 1
+        """, (period,))
+    else:
+        cursor = conn.execute("""
+            SELECT *
+            FROM vibe_reports
+            ORDER BY generated_at DESC
+            LIMIT 1
+        """)
+    row = cursor.fetchone()
+    return dict(row) if row else None
 
 
 # Quick test

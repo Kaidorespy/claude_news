@@ -40,6 +40,14 @@ def build_parser():
     sub.add_parser("stats", help="Show database stats")
     sub.add_parser("doctor", help="Check local setup and source health")
 
+    vibe = sub.add_parser("vibe", help="Generate or show daily/weekly theme reports")
+    vibe.add_argument("period", nargs="?", default="daily", choices=["daily", "weekly", "latest"])
+    vibe.add_argument("--days", type=int, help="Override lookback days")
+    vibe.add_argument("--limit", type=int, default=80)
+    vibe.add_argument("--sources", help="Comma-separated source codes")
+    vibe.add_argument("--min-stars", type=int, default=0)
+    vibe.add_argument("--no-save", action="store_true")
+
     show = sub.add_parser("show", help="Show feed in terminal")
     show.add_argument("--limit", type=int, default=15)
     show.add_argument("--min-stars", type=int, default=0)
@@ -92,6 +100,31 @@ def main():
     if command == "doctor":
         from doctor import run_doctor
         run_doctor()
+        return
+
+    if command == "vibe":
+        from digest import VibeDigest, format_report, latest_report
+
+        if args.period == "latest":
+            latest = latest_report()
+            if not latest:
+                print("No saved vibe reports yet.")
+                return
+            print(format_report(latest))
+            return
+
+        days = args.days if args.days is not None else (1 if args.period == "daily" else 7)
+        digest = VibeDigest()
+        result = digest.generate(
+            days=days,
+            limit=args.limit,
+            sources=sorted(parse_sources(args.sources) or []),
+            min_stars=args.min_stars,
+            save=not args.no_save,
+        )
+        print(format_report(result))
+        if result.get("id"):
+            print(f"\nSaved vibe report #{result['id']} ({result['item_count']} items).")
         return
 
     from feed import ClaudeNewsFeed
