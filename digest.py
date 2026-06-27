@@ -14,10 +14,12 @@ import requests
 from config import get_config
 from database import (
     get_connection,
+    get_latest_items_for_digest,
     get_latest_vibe_report,
     get_recent_items_for_digest,
     save_vibe_report,
 )
+from watchlist import load_watchlist
 
 CONFIG = get_config()
 
@@ -36,6 +38,7 @@ Your job is not to summarize articles one-by-one. Your job is to infer the emerg
 - community unrest
 - subplot narratives
 - weak signals that may become stories
+- watchlist-matching subplot evidence
 - disagreements between official news and user chatter
 - what changed in mood compared with a normal week, if inferable
 
@@ -74,6 +77,7 @@ PERIOD: {period}
 ITEM COUNT: {item_count}
 SOURCE COUNTS: {source_counts}
 STAR COUNTS: {star_counts}
+WATCHLIST TERMS: {watchlist_terms}
 
 FEED ITEMS:
 {items_text}
@@ -135,16 +139,34 @@ JSON response:"""
         sources: Optional[List[str]] = None,
         min_stars: int = 0,
         save: bool = True,
+        recent: bool = False,
+        fallback_min_items: int = 8,
     ) -> dict:
-        period = "daily" if days <= 1 else "weekly" if days <= 7 else f"{days}-day"
+        period = "recent" if recent else "daily" if days <= 1 else "weekly" if days <= 7 else f"{days}-day"
         conn = get_connection(self.config.db_path)
-        items = get_recent_items_for_digest(
-            conn,
-            days=days,
-            limit=limit,
-            sources=sources,
-            min_stars=min_stars,
-        )
+        if recent:
+            items = get_latest_items_for_digest(
+                conn,
+                limit=limit,
+                sources=sources,
+                min_stars=min_stars,
+            )
+        else:
+            items = get_recent_items_for_digest(
+                conn,
+                days=days,
+                limit=limit,
+                sources=sources,
+                min_stars=min_stars,
+            )
+            if days <= 1 and len(items) < fallback_min_items:
+                items = get_latest_items_for_digest(
+                    conn,
+                    limit=limit,
+                    sources=sources,
+                    min_stars=min_stars,
+                )
+                period = "daily/recent"
         if not items:
             conn.close()
             return {
@@ -169,6 +191,7 @@ JSON response:"""
             item_count=len(items),
             source_counts=json.dumps(source_counts, sort_keys=True),
             star_counts=json.dumps(star_counts, sort_keys=True),
+            watchlist_terms=", ".join(load_watchlist()[:20]),
             items_text=self._format_items(items),
         )
         response = self._call_ollama(prompt)

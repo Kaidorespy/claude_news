@@ -10,6 +10,14 @@ import requests
 
 from config import get_config
 from database import get_connection, get_stats
+from watchlist import load_watchlist
+
+
+def _reddit_url(config, url: str) -> str:
+    if config.reddit_rss_user and config.reddit_rss_feed:
+        joiner = "&" if "?" in url else "?"
+        return f"{url}{joiner}user={config.reddit_rss_user}&feed={config.reddit_rss_feed}"
+    return url
 
 
 DEPENDENCIES = [
@@ -87,7 +95,8 @@ def _check_sources(config):
     print("\nSources")
     source_urls = {
         "ANTH": "https://www.anthropic.com/news",
-        "RDIT": "https://www.reddit.com/r/ClaudeAI/new.rss",
+        "RDIT": _reddit_url(config, "https://old.reddit.com/r/ClaudeAI/new.rss"),
+        "RDSR": _reddit_url(config, "https://old.reddit.com/r/ClaudeAI/search.rss?q=claude+nerfed&restrict_sr=on&sort=new&t=month"),
         "HN": "https://hn.algolia.com/api/v1/search_by_date?query=anthropic&tags=story&hitsPerPage=1",
         "GOOG": "https://news.google.com/rss/search?q=anthropic+OR+claude+ai&hl=en-US&gl=US&ceid=US:en",
     }
@@ -121,6 +130,11 @@ def _check_config(config):
     _ok("refresh caps", f"rate={config.refresh_rate_cap}, enrich={config.refresh_enrich_cap}")
     _ok("auto refresh", f"{config.auto_refresh_minutes} minutes")
     _ok("ollama model", config.ollama_model)
+    _ok("watchlist terms", f"{len(load_watchlist())} terms")
+    if config.reddit_rss_user and config.reddit_rss_feed:
+        _ok("reddit rss auth", f"user={config.reddit_rss_user}")
+    else:
+        _warn("reddit rss auth", "not configured; Reddit may return 429")
 
 
 def run_doctor():

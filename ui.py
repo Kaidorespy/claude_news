@@ -146,6 +146,7 @@ class SourceFilter:
     SOURCE_COLORS = {
         'ANTH': '#ff79c6',
         'RDIT': '#ff5555',
+        'RDSR': '#ff8a50',
         'NEWS': '#8be9fd',
         'HN': '#ff9500',
         'GOOG': '#4285f4',
@@ -204,6 +205,7 @@ class NewsItemWidget:
         source_colors = {
             'ANTH': '#ff79c6',  # pink - official
             'RDIT': '#ff5555',  # red - reddit
+            'RDSR': '#ff8a50',  # orange-red - reddit search
             'NEWS': '#8be9fd',  # cyan - news api
             'BLOG': '#50fa7b',  # green - blogs
             'HN':   '#ff9500',  # orange - hacker news
@@ -993,14 +995,19 @@ class ClaudeNewsUI:
                           fg="#606060", bg="#0a0a0a")
         status.pack(side=tk.LEFT)
 
-        def generate(days):
+        def generate(days=1, recent=False):
             status.config(text="generating...")
             set_report("Generating vibe report...")
 
             def worker():
                 try:
                     from digest import VibeDigest, format_report
-                    result = VibeDigest().generate(days=days, limit=80, save=True)
+                    result = VibeDigest().generate(
+                        days=days,
+                        limit=80,
+                        save=True,
+                        recent=recent,
+                    )
                     body = format_report(result)
                     self.root.after(0, lambda: set_report(body))
                     self.root.after(0, lambda: status.config(
@@ -1017,13 +1024,17 @@ class ClaudeNewsUI:
                              fg="#50fa7b", bg="#0a0a0a", cursor="hand2")
         weekly_btn = tk.Label(actions, text="[WEEKLY]", font=("Consolas", 10),
                               fg="#ffd96b", bg="#0a0a0a", cursor="hand2")
+        recent_btn = tk.Label(actions, text="[RECENT]", font=("Consolas", 10),
+                              fg="#8be9fd", bg="#0a0a0a", cursor="hand2")
         close_btn = tk.Label(actions, text="[CLOSE]", font=("Consolas", 10),
                              fg="#ff5555", bg="#0a0a0a", cursor="hand2")
         close_btn.pack(side=tk.RIGHT, padx=4)
         weekly_btn.pack(side=tk.RIGHT, padx=4)
         daily_btn.pack(side=tk.RIGHT, padx=4)
-        daily_btn.bind("<Button-1>", lambda e: generate(1))
-        weekly_btn.bind("<Button-1>", lambda e: generate(7))
+        recent_btn.pack(side=tk.RIGHT, padx=4)
+        daily_btn.bind("<Button-1>", lambda e: generate(days=1))
+        weekly_btn.bind("<Button-1>", lambda e: generate(days=7))
+        recent_btn.bind("<Button-1>", lambda e: generate(recent=True))
         close_btn.bind("<Button-1>", lambda e: win.destroy())
 
     def set_always_behind(self):

@@ -393,6 +393,36 @@ def get_recent_items_for_digest(
     return [dict(row) for row in cursor.fetchall()]
 
 
+def get_latest_items_for_digest(
+    conn: sqlite3.Connection,
+    limit: int = 80,
+    sources: Optional[List[str]] = None,
+    min_stars: int = 0,
+) -> List[dict]:
+    """Get latest visible items regardless of date for sparse local databases."""
+    where = [
+        "COALESCE(hidden, 0) = 0",
+        "(stars >= ? OR stars = 0)",
+    ]
+    params = [min_stars]
+
+    if sources:
+        placeholders = ",".join("?" for _ in sources)
+        where.append(f"source IN ({placeholders})")
+        params.extend(sources)
+
+    sql = f"""
+        SELECT *
+        FROM news_items
+        WHERE {' AND '.join(where)}
+        ORDER BY datetime(published) DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    cursor = conn.execute(sql, params)
+    return [dict(row) for row in cursor.fetchall()]
+
+
 def save_vibe_report(
     conn: sqlite3.Connection,
     period: str,

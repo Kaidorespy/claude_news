@@ -46,7 +46,10 @@ def _csv_env(name: str, default: str) -> Set[str]:
 class AppConfig:
     db_path: Path = ROOT / "claude_news.db"
     interests_path: Path = ROOT / "interests.txt"
+    watchlist_path: Path = ROOT / "watchlist.txt"
     newsapi_key: str = os.getenv("NEWSAPI_KEY", "")
+    reddit_rss_user: str = os.getenv("REDDIT_RSS_USER", "")
+    reddit_rss_feed: str = os.getenv("REDDIT_RSS_FEED", "")
     enabled_sources: Set[str] = None
     refresh_rate_cap: int = _int_env("REFRESH_RATE_CAP", 10)
     refresh_enrich_cap: int = _int_env("REFRESH_ENRICH_CAP", 20)
@@ -63,7 +66,7 @@ class AppConfig:
             object.__setattr__(
                 self,
                 "enabled_sources",
-                _csv_env("ENABLED_SOURCES", "ANTH,RDIT,HN,GOOG,NEWS"),
+                _csv_env("ENABLED_SOURCES", "ANTH,RDIT,RDSR,HN,GOOG,NEWS"),
             )
 
 

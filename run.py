@@ -39,9 +39,10 @@ def build_parser():
     sub.add_parser("ui", help="Launch GUI")
     sub.add_parser("stats", help="Show database stats")
     sub.add_parser("doctor", help="Check local setup and source health")
+    sub.add_parser("watchlist", help="Show active watchlist terms")
 
     vibe = sub.add_parser("vibe", help="Generate or show daily/weekly theme reports")
-    vibe.add_argument("period", nargs="?", default="daily", choices=["daily", "weekly", "latest"])
+    vibe.add_argument("period", nargs="?", default="daily", choices=["daily", "weekly", "recent", "latest"])
     vibe.add_argument("--days", type=int, help="Override lookback days")
     vibe.add_argument("--limit", type=int, default=80)
     vibe.add_argument("--sources", help="Comma-separated source codes")
@@ -102,6 +103,12 @@ def main():
         run_doctor()
         return
 
+    if command == "watchlist":
+        from watchlist import load_watchlist
+        for term in load_watchlist():
+            print(term)
+        return
+
     if command == "vibe":
         from digest import VibeDigest, format_report, latest_report
 
@@ -113,6 +120,7 @@ def main():
             print(format_report(latest))
             return
 
+        recent = args.period == "recent"
         days = args.days if args.days is not None else (1 if args.period == "daily" else 7)
         digest = VibeDigest()
         result = digest.generate(
@@ -121,6 +129,7 @@ def main():
             sources=sorted(parse_sources(args.sources) or []),
             min_stars=args.min_stars,
             save=not args.no_save,
+            recent=recent,
         )
         print(format_report(result))
         if result.get("id"):

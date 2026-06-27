@@ -12,6 +12,31 @@ from typing import List, Optional, Set
 import hashlib
 import json
 import re
+from urllib.parse import quote_plus
+from config import get_config
+from watchlist import load_watchlist
+
+REDDIT_USER_AGENT = "Claude-News-Aggregator/1.0 (personal RSS reader)"
+CONFIG = get_config()
+
+
+def reddit_rss_url(url: str) -> str:
+    """Append optional Reddit per-user RSS params when configured."""
+    if CONFIG.reddit_rss_user and CONFIG.reddit_rss_feed:
+        joiner = "&" if "?" in url else "?"
+        return (
+            f"{url}{joiner}user={quote_plus(CONFIG.reddit_rss_user)}"
+            f"&feed={quote_plus(CONFIG.reddit_rss_feed)}"
+        )
+    return url
+
+
+def parse_reddit_rss(url: str):
+    """Fetch Reddit RSS with a stable user agent before handing it to feedparser."""
+    url = reddit_rss_url(url)
+    response = requests.get(url, headers={"User-Agent": REDDIT_USER_AGENT}, timeout=12)
+    response.raise_for_status()
+    return feedparser.parse(response.text)
 
 @dataclass
 class NewsItem:
@@ -192,8 +217,8 @@ class RedditFetcher(SourceFetcher):
         for sub in self.subreddits:
             try:
                 # Use RSS feed instead of JSON - less likely to be blocked
-                url = f"https://www.reddit.com/r/{sub}/new.rss"
-                feed = feedparser.parse(url)
+                url = f"https://old.reddit.com/r/{sub}/new.rss"
+                feed = parse_reddit_rss(url)
 
                 for entry in feed.entries[:10]:
                     published = datetime.now()
@@ -210,6 +235,49 @@ class RedditFetcher(SourceFetcher):
                     ))
             except Exception as e:
                 print(f"[RDIT] r/{sub} RSS Error: {e}")
+
+        return items
+
+
+class RedditSearchFetcher(SourceFetcher):
+    """Targeted Reddit RSS searches for watchlist/subplot terms."""
+
+    SOURCE_CODE = "RDSR"
+
+    def __init__(self, subreddits: List[str] = None, terms: List[str] = None):
+        self.subreddits = subreddits or ["ClaudeAI", "anthropic", "LocalLLaMA"]
+        self.terms = terms or load_watchlist()
+
+    def fetch(self) -> List[NewsItem]:
+        items = []
+
+        for term in self.terms[:16]:
+            for sub in self.subreddits:
+                try:
+                    url = (
+                        f"https://old.reddit.com/r/{sub}/search.rss"
+                        f"?q={quote_plus(term)}&restrict_sr=on&sort=new&t=month"
+                    )
+                    feed = parse_reddit_rss(url)
+
+                    for entry in feed.entries[:4]:
+                        published = datetime.now()
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            published = datetime(*entry.published_parsed[:6])
+
+                        title = entry.get('title', '')[:100]
+                        link = entry.get('link', '')
+                        summary = entry.get('summary', '')[:240]
+                        items.append(NewsItem(
+                            source=self.SOURCE_CODE,
+                            title=title,
+                            url=link,
+                            summary=f"watch: {term} | r/{sub} | {summary}",
+                            published=published,
+                            content_hash=self._hash_content(title, link)
+                        ))
+                except Exception as e:
+                    print(f"[RDSR] r/{sub} search {term!r} Error: {e}")
 
         return items
 
@@ -306,6 +374,7 @@ class NewsFeedAggregator:
         available_fetchers = [
             AnthropicBlogFetcher(),
             RedditFetcher(),
+            RedditSearchFetcher(),
             HackerNewsFetcher(),
             GoogleNewsFetcher(),
         ]

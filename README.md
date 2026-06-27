@@ -34,12 +34,14 @@ python run.py doctor
 - Rerate existing items after changing interest notes
 - Mark filtered sets read and hide/archive low-signal items
 - Daily/weekly vibe reports that extract themes, subplots, unrest, weak signals, and noise
+- Watchlist-driven Reddit search capture for emerging subplot terms
 - `doctor` command for local diagnostics
 
 ## Sources
 
 - `ANTH` - Anthropic official news page
 - `RDIT` - Reddit RSS for r/anthropic, r/ClaudeAI, and r/LocalLLaMA
+- `RDSR` - Watchlist-driven Reddit search RSS
 - `HN` - Hacker News Algolia search
 - `GOOG` - Google News RSS
 - `NEWS` - NewsAPI, enabled when `NEWSAPI_KEY` is configured
@@ -79,7 +81,10 @@ python run.py rerate --query "claude code" --sources HN,RDIT --limit 5
 python run.py mark-read --priority
 python run.py vibe daily
 python run.py vibe weekly
+python run.py vibe recent
 python run.py vibe latest
+python run.py watchlist
+python run.py refresh --sources RDSR --no-rate
 python run.py stats     # Show database stats
 python run.py doctor    # Check setup/source health
 ```
@@ -87,9 +92,12 @@ python run.py doctor    # Check setup/source health
 ## Config
 
 Copy `.env.example` to `.env` and adjust values as needed.
+Copy `watchlist.example.txt` to `watchlist.txt` to customize subplot search terms.
 
 ```text
 NEWSAPI_KEY=
+REDDIT_RSS_USER=
+REDDIT_RSS_FEED=
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3-coder:480b-cloud
 OLLAMA_TEMPERATURE=0.3
