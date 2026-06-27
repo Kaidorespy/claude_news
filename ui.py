@@ -10,6 +10,9 @@ import webbrowser
 import threading
 from pathlib import Path
 import ctypes
+from config import get_config
+
+CONFIG = get_config()
 
 # Windows-specific: keep window always behind others
 try:
@@ -135,6 +138,58 @@ class StarFilter:
                 btn.config(text="●", fg=colors[i])
             else:
                 btn.config(text="○", fg="#404040")
+
+
+class SourceFilter:
+    """Clickable source filter and refresh source selector."""
+
+    SOURCE_COLORS = {
+        'ANTH': '#ff79c6',
+        'RDIT': '#ff5555',
+        'NEWS': '#8be9fd',
+        'HN': '#ff9500',
+        'GOOG': '#4285f4',
+    }
+
+    def __init__(self, parent, sources, on_change):
+        self.frame = tk.Frame(parent, bg='#0a0a0a')
+        self.on_change = on_change
+        self.states = {source: True for source in sources}
+        self.buttons = {}
+
+        for source in sources:
+            btn = tk.Label(
+                self.frame,
+                text=f"[{source}]",
+                font=("Consolas", 10),
+                fg=self.SOURCE_COLORS.get(source, "#f8f8f2"),
+                bg="#0a0a0a",
+                cursor="hand2",
+                padx=5,
+            )
+            btn.bind("<Button-1>", lambda e, code=source: self.toggle(code))
+            btn.pack(side=tk.LEFT, padx=2)
+            self.buttons[source] = btn
+
+    def toggle(self, source):
+        self.states[source] = not self.states[source]
+        if not any(self.states.values()):
+            self.states[source] = True
+        self.update_display()
+        self.on_change(self.get_active_sources())
+
+    def get_active_sources(self):
+        return {source for source, active in self.states.items() if active}
+
+    def update_display(self):
+        for source, btn in self.buttons.items():
+            if self.states[source]:
+                btn.config(
+                    text=f"[{source}]",
+                    fg=self.SOURCE_COLORS.get(source, "#f8f8f2"),
+                )
+            else:
+                btn.config(text=f" {source} ", fg="#404040")
 
 
 class NewsItemWidget:
@@ -372,6 +427,13 @@ class ClaudeNewsUI:
         self.filter = StarFilter(self.container, self.on_filter_change)
         self.filter.frame.pack(fill=tk.X, pady=5, padx=10)
 
+        self.source_filter = SourceFilter(
+            self.container,
+            sorted(CONFIG.enabled_sources),
+            self.on_source_filter_change,
+        )
+        self.source_filter.frame.pack(fill=tk.X, pady=(0, 5), padx=10)
+
         # Separator
         tk.Frame(self.container, bg='#404040', height=1).pack(fill=tk.X, pady=5)
 
@@ -391,6 +453,7 @@ class ClaudeNewsUI:
 
         # Load feed
         self.current_filter = []
+        self.current_sources = self.source_filter.get_active_sources()
         self.load_feed()
 
     def load_feed(self):
@@ -428,6 +491,8 @@ class ClaudeNewsUI:
         # Filter by stars if filter active
         if self.current_filter:
             items = [i for i in items if i.get('stars', 0) in self.current_filter]
+        if self.current_sources:
+            items = [i for i in items if i.get('source') in self.current_sources]
 
         # Create widgets
         for item in items:
@@ -448,6 +513,11 @@ class ClaudeNewsUI:
     def on_filter_change(self, active_stars):
         """Handle filter change"""
         self.current_filter = active_stars
+        self.load_feed()
+
+    def on_source_filter_change(self, active_sources):
+        """Handle source filter change"""
+        self.current_sources = active_sources
         self.load_feed()
 
     def show_analysis(self, item):
@@ -472,7 +542,7 @@ class ClaudeNewsUI:
             try:
                 from feed import ClaudeNewsFeed
                 # Connection lives entirely in this thread — safe.
-                feed = ClaudeNewsFeed()
+                feed = ClaudeNewsFeed(enabled_sources=self.current_sources)
                 result = feed.refresh(rate_new=True)
                 self.root.after(0, lambda: self._refresh_done(result))
             except Exception as e:
@@ -579,7 +649,7 @@ class ClaudeNewsUI:
 
     def run(self):
         """Start the UI"""
-        self.start_auto_refresh()  # auto-refresh every hour
+        self.start_auto_refresh(CONFIG.auto_refresh_minutes * 60000)
         self.root.mainloop()
 
 

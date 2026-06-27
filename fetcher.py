@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 import feedparser
 from datetime import datetime, timedelta
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Set
 import hashlib
 import json
 import re
@@ -301,8 +301,9 @@ class GoogleNewsFetcher(SourceFetcher):
 class NewsFeedAggregator:
     """Combines all sources and handles deduplication"""
 
-    def __init__(self, newsapi_key: str = None):
-        self.fetchers = [
+    def __init__(self, newsapi_key: str = None, enabled_sources: Set[str] = None):
+        enabled_sources = {s.upper() for s in enabled_sources} if enabled_sources else None
+        available_fetchers = [
             AnthropicBlogFetcher(),
             RedditFetcher(),
             HackerNewsFetcher(),
@@ -310,7 +311,15 @@ class NewsFeedAggregator:
         ]
 
         if newsapi_key:
-            self.fetchers.append(NewsAPIFetcher(newsapi_key))
+            available_fetchers.append(NewsAPIFetcher(newsapi_key))
+
+        if enabled_sources:
+            self.fetchers = [
+                fetcher for fetcher in available_fetchers
+                if fetcher.SOURCE_CODE in enabled_sources
+            ]
+        else:
+            self.fetchers = available_fetchers
 
     def fetch_all(self) -> List[NewsItem]:
         """Fetch from all sources, deduplicate, return sorted by date"""

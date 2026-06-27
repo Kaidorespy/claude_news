@@ -54,6 +54,32 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
     except sqlite3.OperationalError:
         pass
 
+    # Migration: richer body fetch status for diagnostics/retry policy
+    try:
+        conn.execute("ALTER TABLE news_items ADD COLUMN body_status TEXT DEFAULT 'pending'")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE news_items ADD COLUMN body_error TEXT DEFAULT ''")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE news_items ADD COLUMN body_fetched_at TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass
+
+    conn.execute("""
+        UPDATE news_items
+        SET body_status = CASE
+            WHEN body_fetched = 1 AND COALESCE(body, '') != '' THEN 'success'
+            WHEN body_fetched = 1 THEN 'failed'
+            ELSE 'pending'
+        END
+        WHERE body_status IS NULL OR body_status = 'pending'
+    """)
+
     conn.commit()
     return conn
 
@@ -136,20 +162,25 @@ def get_unenriched_items(conn: sqlite3.Connection, limit: int = 50) -> List[dict
     """Get items whose article body hasn't been fetched yet."""
     cursor = conn.execute("""
         SELECT * FROM news_items
-        WHERE body_fetched = 0
+        WHERE body_status = 'pending' OR body_status IS NULL
         ORDER BY published DESC
         LIMIT ?
     """, (limit,))
     return [dict(row) for row in cursor.fetchall()]
 
 
-def update_body(conn: sqlite3.Connection, content_hash: str, body: str):
+def update_body(conn: sqlite3.Connection, content_hash: str, body: str, error: str = ""):
     """Store extracted article body. Marks body_fetched=1 either way."""
+    status = "success" if body else "failed"
     conn.execute("""
         UPDATE news_items
-        SET body = ?, body_fetched = 1
+        SET body = ?,
+            body_fetched = 1,
+            body_status = ?,
+            body_error = ?,
+            body_fetched_at = CURRENT_TIMESTAMP
         WHERE content_hash = ?
-    """, (body or '', content_hash))
+    """, (body or '', status, error or '', content_hash))
     conn.commit()
 
 
@@ -182,6 +213,16 @@ def get_stats(conn: sqlite3.Connection) -> dict:
 
     cursor = conn.execute("SELECT COUNT(*) FROM news_items WHERE stars >= 4")
     stats['high_priority'] = cursor.fetchone()[0]
+
+    cursor = conn.execute("""
+        SELECT body_status, COUNT(*) as cnt
+        FROM news_items
+        GROUP BY body_status
+    """)
+    stats['by_body_status'] = {
+        (row['body_status'] or 'pending'): row['cnt']
+        for row in cursor.fetchall()
+    }
 
     cursor = conn.execute("SELECT source, COUNT(*) as cnt FROM news_items GROUP BY source")
     stats['by_source'] = {row['source']: row['cnt'] for row in cursor.fetchall()}

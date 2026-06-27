@@ -16,6 +16,7 @@ python run.py
 python run.py refresh
 python run.py show
 python run.py stats
+python run.py doctor
 ```
 
 ## Features
@@ -28,6 +29,8 @@ python run.py stats
 - Interest notes that bias future ratings
 - Article body enrichment before rating
 - Hourly auto-refresh while the UI is open
+- Source toggles for filtering and targeted refreshes
+- `doctor` command for local diagnostics
 
 ## Sources
 
@@ -44,6 +47,8 @@ claude_news/
 |-- run.py            # Launcher
 |-- ui.py             # Tkinter UI
 |-- feed.py           # Main orchestrator
+|-- config.py         # Environment-backed settings
+|-- doctor.py         # Local diagnostics
 |-- fetcher.py        # Source fetchers
 |-- enricher.py       # Article body extraction
 |-- rater.py          # Ollama rating
@@ -59,8 +64,12 @@ claude_news/
 python run.py ui        # Launch GUI
 python run.py refresh   # Fetch + rate new items
 python run.py refresh --no-rate
+python run.py refresh --sources ANTH,HN,GOOG
+python run.py refresh --full
 python run.py show      # Show feed in terminal
+python run.py show --limit 25 --min-stars 4
 python run.py stats     # Show database stats
+python run.py doctor    # Check setup/source health
 ```
 
 ## Config
@@ -73,6 +82,12 @@ OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3-coder:480b-cloud
 OLLAMA_TEMPERATURE=0.3
 OLLAMA_TIMEOUT=120
+ENABLED_SOURCES=ANTH,RDIT,HN,GOOG,NEWS
+REFRESH_RATE_CAP=10
+REFRESH_ENRICH_CAP=20
+REFRESH_DELAY_SECONDS=1.5
+ENRICH_DELAY_SECONDS=2.0
+AUTO_REFRESH_MINUTES=60
 ```
 
 ## Next Ideas

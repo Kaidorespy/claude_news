@@ -10,18 +10,14 @@ from database import (
 )
 from rater import NewsRater, RaterConfig
 from enricher import fetch_body
+from config import get_config
 from pathlib import Path
 import json
-import os
+import sys
 import time
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-INTERESTS_PATH = Path(__file__).parent / "interests.txt"
+CONFIG = get_config()
+INTERESTS_PATH = CONFIG.interests_path
 
 
 def load_interests() -> str:
@@ -40,27 +36,36 @@ def save_interests(text: str):
 class ClaudeNewsFeed:
     """Main feed manager"""
 
-    def __init__(self, db_path: Path = None, newsapi_key: str = None):
-        self.db_path = db_path
-        self.conn = get_connection(db_path) if db_path else get_connection()
+    def __init__(self, db_path: Path = None, newsapi_key: str = None,
+                 enabled_sources: set = None):
+        self.db_path = db_path or CONFIG.db_path
+        self.conn = get_connection(self.db_path)
         self.aggregator = NewsFeedAggregator(
-            newsapi_key=newsapi_key or os.getenv("NEWSAPI_KEY")
+            newsapi_key=newsapi_key if newsapi_key is not None else CONFIG.newsapi_key,
+            enabled_sources=enabled_sources or CONFIG.enabled_sources,
         )
         self.rater = NewsRater()
 
-    def refresh(self, rate_new: bool = True, rate_cap: int = 9999,
-                enrich_cap: int = 9999,
-                inter_request_delay: float = 1.5,
-                enrich_delay: float = 2.0) -> dict:
+    def refresh(self, rate_new: bool = True, rate_cap: int = None,
+                enrich_cap: int = None,
+                inter_request_delay: float = None,
+                enrich_delay: float = None) -> dict:
         """
         Fetch -> enrich (scrape article body) -> rate.
 
-        - Rates ALL unrated items (not just newly added), up to rate_cap.
-        - Enriches ALL items missing body (up to enrich_cap) so the rater
+        - Rates unrated items (not just newly added), up to rate_cap.
+        - Enriches items missing body (up to enrich_cap) so the rater
           can judge from real article content, not just titles.
         - Pauses between network calls to be polite.
         """
         print("Refreshing feed...")
+        rate_cap = CONFIG.refresh_rate_cap if rate_cap is None else rate_cap
+        enrich_cap = CONFIG.refresh_enrich_cap if enrich_cap is None else enrich_cap
+        inter_request_delay = (
+            CONFIG.refresh_delay_seconds
+            if inter_request_delay is None else inter_request_delay
+        )
+        enrich_delay = CONFIG.enrich_delay_seconds if enrich_delay is None else enrich_delay
 
         # 1. Fetch
         items = self.aggregator.fetch_all()
@@ -137,6 +142,9 @@ class ClaudeNewsFeed:
 def main():
     """CLI interface"""
     import argparse
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
     parser = argparse.ArgumentParser(description="Claude News Feed")
     parser.add_argument("--refresh", action="store_true", help="Fetch new items")

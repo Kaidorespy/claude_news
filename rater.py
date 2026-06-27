@@ -6,23 +6,19 @@ Uses Ollama to rate news items by interestingness and generate analysis.
 import requests
 import json
 import time
-import os
 from typing import Tuple
 from dataclasses import dataclass
+from config import get_config
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+_CONFIG = get_config()
 
 
 @dataclass
 class RaterConfig:
-    model: str = os.getenv("OLLAMA_MODEL", "qwen3-coder:480b-cloud")
-    base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    temperature: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.3"))
-    request_timeout: int = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+    model: str = _CONFIG.ollama_model
+    base_url: str = _CONFIG.ollama_base_url
+    temperature: float = _CONFIG.ollama_temperature
+    request_timeout: int = _CONFIG.ollama_timeout
     max_retries: int = 3
     retry_backoff: float = 2.0  # doubles each retry: 2s, 4s, 8s
 
