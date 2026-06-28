@@ -494,12 +494,13 @@ class ClaudeNewsUI:
         self.root.title("Claude News")
         self.root.geometry("700x500")
         self.root.configure(bg='#0a0a0a')
-
-        # Remove window decorations for clean look (optional)
-        # self.root.overrideredirect(True)
+        self.root.overrideredirect(True)
 
         # Make window stay behind others (Windows)
         self.root.attributes('-alpha', 0.95)  # slight transparency
+        self.drag_start = None
+        self.maximized = False
+        self.restore_geometry = None
 
         # Main container
         self.container = tk.Frame(self.root, bg='#0a0a0a')
@@ -508,6 +509,7 @@ class ClaudeNewsUI:
         # Header
         header = tk.Frame(self.container, bg='#0a0a0a')
         header.pack(fill=tk.X, pady=5)
+        self.drag_widgets = [header]
 
         title = tk.Label(
             header,
@@ -517,6 +519,7 @@ class ClaudeNewsUI:
             bg="#0a0a0a"
         )
         title.pack(side=tk.LEFT, padx=10)
+        self.drag_widgets.append(title)
 
         self.status_label = tk.Label(
             header,
@@ -526,6 +529,14 @@ class ClaudeNewsUI:
             bg="#0a0a0a"
         )
         self.status_label.pack(side=tk.LEFT, padx=4)
+        self.drag_widgets.append(self.status_label)
+
+        self.window_controls = tk.Frame(self.root, bg="#0a0a0a")
+        self.min_btn = self._window_control(self.window_controls, "_", "#8be9fd", self.minimize_window)
+        self.max_btn = self._window_control(self.window_controls, "□", "#ffd96b", self.toggle_maximize)
+        self.close_btn = self._window_control(self.window_controls, "X", "#ff5555", self.root.destroy)
+        self.controls_visible = False
+        self._hide_window_controls()
 
         # Refresh button
         self.refresh_btn = tk.Label(
@@ -661,7 +672,87 @@ class ClaudeNewsUI:
         self.current_filter = []
         self.current_sources = self.source_filter.get_active_sources()
         self.update_mode_buttons()
+        self.bind_window_chrome()
         self.load_feed()
+
+    def _window_control(self, parent, text, color, command):
+        label = tk.Label(
+            parent,
+            text=text,
+            font=("Consolas", 11, "bold"),
+            fg=color,
+            bg="#0a0a0a",
+            cursor="hand2",
+            width=3,
+        )
+        label.pack(side=tk.LEFT, padx=1)
+        label.bind("<Button-1>", lambda e: command())
+        label.bind("<Enter>", lambda e: label.config(bg="#1a1a1a"))
+        label.bind("<Leave>", lambda e: label.config(bg="#0a0a0a"))
+        return label
+
+    def bind_window_chrome(self):
+        """Custom borderless window drag and hover-only controls."""
+        for widget in self.drag_widgets:
+            widget.bind("<ButtonPress-1>", self.start_window_drag, add="+")
+            widget.bind("<B1-Motion>", self.drag_window, add="+")
+            widget.bind("<Double-Button-1>", lambda e: self.toggle_maximize(), add="+")
+
+        self.root.bind("<Motion>", self.on_root_motion, add="+")
+        self.root.bind("<Leave>", lambda e: self._hide_window_controls(), add="+")
+        self.window_controls.bind("<Enter>", lambda e: self._show_window_controls(), add="+")
+        self.window_controls.bind("<Leave>", lambda e: self._hide_window_controls(), add="+")
+        self.root.bind("<Map>", lambda e: self.root.overrideredirect(True), add="+")
+
+    def start_window_drag(self, event):
+        if self.maximized:
+            return
+        self.drag_start = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
+
+    def drag_window(self, event):
+        if not self.drag_start or self.maximized:
+            return
+        start_x, start_y, root_x, root_y = self.drag_start
+        dx = event.x_root - start_x
+        dy = event.y_root - start_y
+        self.root.geometry(f"+{root_x + dx}+{root_y + dy}")
+
+    def on_root_motion(self, event):
+        width = self.root.winfo_width()
+        if event.y <= 34 and event.x >= width - 130:
+            self._show_window_controls()
+        elif event.y > 58 or event.x < width - 160:
+            self._hide_window_controls()
+
+    def _show_window_controls(self):
+        if self.controls_visible:
+            return
+        self.window_controls.place(relx=1.0, x=-8, y=6, anchor="ne")
+        self.window_controls.lift()
+        self.controls_visible = True
+
+    def _hide_window_controls(self):
+        if not getattr(self, "window_controls", None):
+            return
+        self.window_controls.place_forget()
+        self.controls_visible = False
+
+    def minimize_window(self):
+        self.root.overrideredirect(False)
+        self.root.iconify()
+
+    def toggle_maximize(self):
+        if self.maximized:
+            if self.restore_geometry:
+                self.root.geometry(self.restore_geometry)
+            self.maximized = False
+            return
+
+        self.restore_geometry = self.root.geometry()
+        width = self.root.winfo_screenwidth()
+        height = self.root.winfo_screenheight()
+        self.root.geometry(f"{width}x{height}+0+0")
+        self.maximized = True
 
     def load_feed(self):
         """Load items from database"""
