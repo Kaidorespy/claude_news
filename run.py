@@ -41,8 +41,17 @@ def build_parser():
     sub.add_parser("doctor", help="Check local setup and source health")
     sub.add_parser("watchlist", help="Show active watchlist terms")
 
+    watch_hits = sub.add_parser("watch-hits", help="Show recent local items matching watchlist terms")
+    watch_hits.add_argument("--limit", type=int, default=100)
+    watch_hits.add_argument("--sources", help="Comma-separated source codes")
+
     vibe = sub.add_parser("vibe", help="Generate or show daily/weekly theme reports")
-    vibe.add_argument("period", nargs="?", default="daily", choices=["daily", "weekly", "recent", "latest"])
+    vibe.add_argument(
+        "period",
+        nargs="?",
+        default="daily",
+        choices=["daily", "weekly", "recent", "latest", "history", "delta"],
+    )
     vibe.add_argument("--days", type=int, help="Override lookback days")
     vibe.add_argument("--limit", type=int, default=80)
     vibe.add_argument("--sources", help="Comma-separated source codes")
@@ -109,8 +118,25 @@ def main():
             print(term)
         return
 
+    if command == "watch-hits":
+        from digest import format_watch_hits, watch_hits
+        hits = watch_hits(
+            limit=args.limit,
+            sources=sorted(parse_sources(args.sources) or []),
+        )
+        print(format_watch_hits(hits))
+        return
+
     if command == "vibe":
-        from digest import VibeDigest, format_report, latest_report
+        from digest import (
+            VibeDigest,
+            format_delta,
+            format_history,
+            format_report,
+            latest_report,
+            report_delta,
+            report_history,
+        )
 
         if args.period == "latest":
             latest = latest_report()
@@ -118,6 +144,14 @@ def main():
                 print("No saved vibe reports yet.")
                 return
             print(format_report(latest))
+            return
+
+        if args.period == "history":
+            print(format_history(report_history(limit=args.limit)))
+            return
+
+        if args.period == "delta":
+            print(format_delta(report_delta()))
             return
 
         recent = args.period == "recent"

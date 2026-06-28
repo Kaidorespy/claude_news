@@ -16,7 +16,10 @@ from database import (
     get_connection,
     get_latest_items_for_digest,
     get_latest_vibe_report,
+    get_previous_vibe_report,
     get_recent_items_for_digest,
+    get_items,
+    list_vibe_reports,
     save_vibe_report,
 )
 from watchlist import load_watchlist
@@ -226,6 +229,131 @@ def latest_report(period: str = None) -> Optional[dict]:
         return None
     row["report"] = json.loads(row["report_json"])
     return row
+
+
+def report_history(limit: int = 10) -> list:
+    conn = get_connection(CONFIG.db_path)
+    rows = list_vibe_reports(conn, limit=limit)
+    conn.close()
+    for row in rows:
+        try:
+            row["report"] = json.loads(row["report_json"])
+        except json.JSONDecodeError:
+            row["report"] = {}
+    return rows
+
+
+def watch_hits(limit: int = 100, sources: Optional[List[str]] = None) -> dict:
+    """Group recent local items that match watchlist terms."""
+    terms = load_watchlist()
+    conn = get_connection(CONFIG.db_path)
+    items = get_items(conn, limit=limit, sources=sources)
+    conn.close()
+
+    hits = {term: [] for term in terms}
+    for item in items:
+        haystack = " ".join([
+            item.get("title") or "",
+            item.get("summary") or "",
+            item.get("body") or "",
+            item.get("analysis") or "",
+        ]).lower()
+        for term in terms:
+            if term.lower() in haystack:
+                hits[term].append(item)
+
+    return {term: rows for term, rows in hits.items() if rows}
+
+
+def _theme_names(report: dict) -> set:
+    names = set()
+    for section in ("top_themes", "subplots"):
+        for row in report.get(section) or []:
+            if isinstance(row, dict) and row.get("name"):
+                names.add(row["name"].strip().lower())
+    return names
+
+
+def report_delta() -> Optional[dict]:
+    """Compare latest saved vibe report with the previous saved report."""
+    conn = get_connection(CONFIG.db_path)
+    latest = get_latest_vibe_report(conn)
+    previous = get_previous_vibe_report(conn, latest["id"] if latest else None)
+    conn.close()
+    if not latest or not previous:
+        return None
+
+    latest_report_data = json.loads(latest["report_json"])
+    previous_report_data = json.loads(previous["report_json"])
+    latest_names = _theme_names(latest_report_data)
+    previous_names = _theme_names(previous_report_data)
+
+    return {
+        "latest": latest,
+        "previous": previous,
+        "latest_report": latest_report_data,
+        "previous_report": previous_report_data,
+        "new": sorted(latest_names - previous_names),
+        "fading": sorted(previous_names - latest_names),
+        "recurring": sorted(latest_names & previous_names),
+    }
+
+
+def format_history(rows: list) -> str:
+    if not rows:
+        return "No saved vibe reports yet."
+    lines = []
+    for row in rows:
+        report = row.get("report") or {}
+        lines.append(
+            f"#{row['id']} {row['generated_at']} "
+            f"{row['period']} ({row['item_count']} items): "
+            f"{report.get('headline', 'Untitled')}"
+        )
+    return "\n".join(lines)
+
+
+def format_watch_hits(hits: dict) -> str:
+    if not hits:
+        return "No local watchlist hits found."
+    lines = []
+    for term, rows in hits.items():
+        lines.append(f"{term} ({len(rows)})")
+        lines.append("-" * (len(term) + len(str(len(rows))) + 3))
+        for item in rows[:8]:
+            stars = "*" * item.get("stars", 0) + "." * (5 - item.get("stars", 0))
+            lines.append(f"* [{item.get('source')}] {item.get('title')} ({stars})")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def format_delta(delta: Optional[dict]) -> str:
+    if not delta:
+        return "Need at least two saved vibe reports for a delta."
+    latest = delta["latest_report"]
+    previous = delta["previous_report"]
+    lines = [
+        "Vibe Delta",
+        "=" * 60,
+        f"Previous: {previous.get('headline', 'Untitled')}",
+        f"Latest:   {latest.get('headline', 'Untitled')}",
+        "",
+    ]
+
+    def add(title, rows):
+        lines.append(title)
+        lines.append("-" * len(title))
+        if rows:
+            lines.extend(f"* {row}" for row in rows)
+        else:
+            lines.append("* none")
+        lines.append("")
+
+    add("New Themes", delta["new"])
+    add("Recurring Themes", delta["recurring"])
+    add("Fading Themes", delta["fading"])
+    lines.append(f"Latest one-line: {latest.get('one_line', '')}")
+    return "\n".join(lines).strip()
 
 
 def format_report(result: dict) -> str:

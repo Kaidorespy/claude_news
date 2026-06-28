@@ -83,7 +83,10 @@ python run.py vibe daily
 python run.py vibe weekly
 python run.py vibe recent
 python run.py vibe latest
+python run.py vibe history
+python run.py vibe delta
 python run.py watchlist
+python run.py watch-hits
 python run.py refresh --sources RDSR --no-rate
 python run.py stats     # Show database stats
 python run.py doctor    # Check setup/source health

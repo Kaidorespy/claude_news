@@ -460,6 +460,36 @@ def get_latest_vibe_report(conn: sqlite3.Connection, period: str = None) -> Opti
     return dict(row) if row else None
 
 
+def list_vibe_reports(conn: sqlite3.Connection, limit: int = 10) -> List[dict]:
+    """List recent saved vibe reports."""
+    cursor = conn.execute("""
+        SELECT id, period, days, generated_at, item_count, report_json
+        FROM vibe_reports
+        ORDER BY generated_at DESC
+        LIMIT ?
+    """, (limit,))
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def get_previous_vibe_report(conn: sqlite3.Connection, report_id: int = None) -> Optional[dict]:
+    """Fetch the report immediately before report_id, or before latest if omitted."""
+    if report_id is None:
+        latest = get_latest_vibe_report(conn)
+        if not latest:
+            return None
+        report_id = latest["id"]
+
+    cursor = conn.execute("""
+        SELECT *
+        FROM vibe_reports
+        WHERE id < ?
+        ORDER BY id DESC
+        LIMIT 1
+    """, (report_id,))
+    row = cursor.fetchone()
+    return dict(row) if row else None
+
+
 # Quick test
 if __name__ == "__main__":
     print("Database Test")

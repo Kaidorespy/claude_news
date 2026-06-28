@@ -1020,21 +1020,39 @@ class ClaudeNewsUI:
 
             threading.Thread(target=worker, daemon=True).start()
 
+        def show_history():
+            from digest import format_history, report_history
+            set_report(format_history(report_history(limit=12)))
+            status.config(text="history")
+
+        def show_delta():
+            from digest import format_delta, report_delta
+            set_report(format_delta(report_delta()))
+            status.config(text="delta")
+
         daily_btn = tk.Label(actions, text="[DAILY]", font=("Consolas", 10),
                              fg="#50fa7b", bg="#0a0a0a", cursor="hand2")
         weekly_btn = tk.Label(actions, text="[WEEKLY]", font=("Consolas", 10),
                               fg="#ffd96b", bg="#0a0a0a", cursor="hand2")
         recent_btn = tk.Label(actions, text="[RECENT]", font=("Consolas", 10),
                               fg="#8be9fd", bg="#0a0a0a", cursor="hand2")
+        history_btn = tk.Label(actions, text="[HISTORY]", font=("Consolas", 10),
+                               fg="#bd93f9", bg="#0a0a0a", cursor="hand2")
+        delta_btn = tk.Label(actions, text="[DELTA]", font=("Consolas", 10),
+                             fg="#ff79c6", bg="#0a0a0a", cursor="hand2")
         close_btn = tk.Label(actions, text="[CLOSE]", font=("Consolas", 10),
                              fg="#ff5555", bg="#0a0a0a", cursor="hand2")
         close_btn.pack(side=tk.RIGHT, padx=4)
+        delta_btn.pack(side=tk.RIGHT, padx=4)
+        history_btn.pack(side=tk.RIGHT, padx=4)
         weekly_btn.pack(side=tk.RIGHT, padx=4)
         daily_btn.pack(side=tk.RIGHT, padx=4)
         recent_btn.pack(side=tk.RIGHT, padx=4)
         daily_btn.bind("<Button-1>", lambda e: generate(days=1))
         weekly_btn.bind("<Button-1>", lambda e: generate(days=7))
         recent_btn.bind("<Button-1>", lambda e: generate(recent=True))
+        history_btn.bind("<Button-1>", lambda e: show_history())
+        delta_btn.bind("<Button-1>", lambda e: show_delta())
         close_btn.bind("<Button-1>", lambda e: win.destroy())
 
     def set_always_behind(self):
