@@ -499,6 +499,8 @@ class ClaudeNewsUI:
         # Make window stay behind others (Windows)
         self.root.attributes('-alpha', 0.95)  # slight transparency
         self.drag_start = None
+        self.resize_start = None
+        self.resize_edge = None
         self.maximized = False
         self.restore_geometry = None
 
@@ -699,18 +701,21 @@ class ClaudeNewsUI:
             widget.bind("<Double-Button-1>", lambda e: self.toggle_maximize(), add="+")
 
         self.root.bind("<Motion>", self.on_root_motion, add="+")
+        self.root.bind("<ButtonPress-1>", self.start_window_resize, add="+")
+        self.root.bind("<B1-Motion>", self.resize_window, add="+")
+        self.root.bind("<ButtonRelease-1>", self.stop_window_resize, add="+")
         self.root.bind("<Leave>", lambda e: self._hide_window_controls(), add="+")
         self.window_controls.bind("<Enter>", lambda e: self._show_window_controls(), add="+")
         self.window_controls.bind("<Leave>", lambda e: self._hide_window_controls(), add="+")
         self.root.bind("<Map>", lambda e: self.root.overrideredirect(True), add="+")
 
     def start_window_drag(self, event):
-        if self.maximized:
+        if self.maximized or self._resize_edge(event):
             return
         self.drag_start = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
 
     def drag_window(self, event):
-        if not self.drag_start or self.maximized:
+        if self.resize_start or not self.drag_start or self.maximized:
             return
         start_x, start_y, root_x, root_y = self.drag_start
         dx = event.x_root - start_x
@@ -719,10 +724,100 @@ class ClaudeNewsUI:
 
     def on_root_motion(self, event):
         width = self.root.winfo_width()
+        edge = self._resize_edge(event)
+        self.root.config(cursor=self._resize_cursor(edge) if edge else "")
         if event.y <= 34 and event.x >= width - 130:
             self._show_window_controls()
         elif event.y > 58 or event.x < width - 160:
             self._hide_window_controls()
+
+    def _resize_edge(self, event):
+        if self.maximized:
+            return ""
+        margin = 7
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        left = event.x <= margin
+        right = event.x >= width - margin
+        top = event.y <= margin
+        bottom = event.y >= height - margin
+        if top and left:
+            return "nw"
+        if top and right:
+            return "ne"
+        if bottom and left:
+            return "sw"
+        if bottom and right:
+            return "se"
+        if left:
+            return "w"
+        if right:
+            return "e"
+        if top:
+            return "n"
+        if bottom:
+            return "s"
+        return ""
+
+    def _resize_cursor(self, edge):
+        return {
+            "n": "top_side",
+            "s": "bottom_side",
+            "e": "right_side",
+            "w": "left_side",
+            "ne": "top_right_corner",
+            "nw": "top_left_corner",
+            "se": "bottom_right_corner",
+            "sw": "bottom_left_corner",
+        }.get(edge, "")
+
+    def start_window_resize(self, event):
+        edge = self._resize_edge(event)
+        if not edge:
+            return
+        self.resize_edge = edge
+        self.resize_start = (
+            event.x_root,
+            event.y_root,
+            self.root.winfo_x(),
+            self.root.winfo_y(),
+            self.root.winfo_width(),
+            self.root.winfo_height(),
+        )
+        self.drag_start = None
+
+    def resize_window(self, event):
+        if not self.resize_start or not self.resize_edge:
+            return
+        start_x, start_y, root_x, root_y, width, height = self.resize_start
+        dx = event.x_root - start_x
+        dy = event.y_root - start_y
+
+        min_width = 520
+        min_height = 340
+        new_x = root_x
+        new_y = root_y
+        new_width = width
+        new_height = height
+
+        if "e" in self.resize_edge:
+            new_width = max(min_width, width + dx)
+        if "s" in self.resize_edge:
+            new_height = max(min_height, height + dy)
+        if "w" in self.resize_edge:
+            new_width = max(min_width, width - dx)
+            if new_width > min_width:
+                new_x = root_x + dx
+        if "n" in self.resize_edge:
+            new_height = max(min_height, height - dy)
+            if new_height > min_height:
+                new_y = root_y + dy
+
+        self.root.geometry(f"{new_width}x{new_height}+{new_x}+{new_y}")
+
+    def stop_window_resize(self, _event):
+        self.resize_start = None
+        self.resize_edge = None
 
     def _show_window_controls(self):
         if self.controls_visible:
