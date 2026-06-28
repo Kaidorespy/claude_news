@@ -37,6 +37,11 @@ def build_parser():
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("ui", help="Launch GUI")
+    ambient = sub.add_parser("ambient", help="Launch Pygame ambient desktop view")
+    ambient.add_argument("--windowed", action="store_true", help="Run in a normal-size borderless window")
+    ambient.add_argument("--width", type=int, default=1280)
+    ambient.add_argument("--height", type=int, default=720)
+    ambient.add_argument("--duration", type=float, help="Auto-close after N seconds")
     sub.add_parser("stats", help="Show database stats")
     sub.add_parser("doctor", help="Check local setup and source health")
     sub.add_parser("watchlist", help="Show active watchlist terms")
@@ -105,6 +110,16 @@ def main():
     if command == "ui":
         from ui import main as ui_main
         ui_main()
+        return
+
+    if command == "ambient":
+        from ambient import run_ambient
+        run_ambient(
+            fullscreen=not args.windowed,
+            width=args.width,
+            height=args.height,
+            duration=args.duration,
+        )
         return
 
     if command == "doctor":

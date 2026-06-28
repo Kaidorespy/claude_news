@@ -1,5 +1,6 @@
 beautifulsoup4>=4.12
 feedparser>=6.0
 python-dotenv>=1.0
+pygame>=2.6
 requests>=2.32
 trafilatura>=1.12

@@ -35,6 +35,7 @@ python run.py doctor
 - Mark filtered sets read and hide/archive low-signal items
 - Daily/weekly vibe reports that extract themes, subplots, unrest, weak signals, and noise
 - Watchlist-driven Reddit search capture for emerging subplot terms
+- Optional Pygame ambient desktop view with RSS rail and animated newspaper panels
 - `doctor` command for local diagnostics
 
 ## Sources
@@ -68,6 +69,8 @@ claude_news/
 
 ```bash
 python run.py ui        # Launch GUI
+python run.py ambient   # Fullscreen ambient view
+python run.py ambient --windowed
 python run.py refresh   # Fetch + rate new items
 python run.py refresh --no-rate
 python run.py refresh --sources ANTH,HN,GOOG
