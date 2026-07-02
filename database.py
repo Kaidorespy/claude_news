@@ -9,8 +9,10 @@ from typing import List, Optional
 from pathlib import Path
 import json
 
+from config import ROOT
+
 # Default db location
-DB_PATH = Path(__file__).parent / "claude_news.db"
+DB_PATH = ROOT / "claude_news.db"
 
 
 def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:

@@ -9,6 +9,10 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 
+# Optional local settings
+copy .env.example .env
+copy watchlist.example.txt watchlist.txt
+
 # Launch the UI
 python run.py
 
@@ -53,17 +57,22 @@ python run.py doctor
 claude_news/
 |-- run.py            # Launcher
 |-- ui.py             # Tkinter UI
+|-- ambient.py        # Pygame ambient desktop view
 |-- feed.py           # Main orchestrator
 |-- config.py         # Environment-backed settings
 |-- doctor.py         # Local diagnostics
 |-- fetcher.py        # Source fetchers
 |-- enricher.py       # Article body extraction
 |-- rater.py          # Ollama rating
+|-- digest.py         # Daily/weekly vibe reports
 |-- database.py       # SQLite storage
 |-- requirements.txt  # Python dependencies
 |-- .env.example      # Optional local config template
-`-- claude_news.db    # Local database
+`-- watchlist.example.txt
 ```
+
+Local files such as `.env`, `watchlist.txt`, `interests.txt`, `claude_news.db`,
+`build/`, and `dist/` are intentionally ignored.
 
 ## Commands
 
@@ -116,11 +125,17 @@ ENRICH_DELAY_SECONDS=2.0
 AUTO_REFRESH_MINUTES=60
 ```
 
+## Packaging
+
+The app can be packaged with PyInstaller. In a frozen build, `.env`,
+`watchlist.txt`, `interests.txt`, and `claude_news.db` live next to the
+executable so a copied folder keeps its local settings and feed history.
+
+Build artifacts are not committed.
+
 ## Next Ideas
 
-- Source toggles in the UI
-- Search and saved filters
-- Better cross-source deduplication
-- A compact "priority only" mode
 - System tray support
 - True always-behind Windows behavior
+- Saved filter presets
+- Better cross-source deduplication

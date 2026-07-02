@@ -10,3 +10,6 @@ interests.txt
 watchlist.txt
 *.db
 *.log
+build/
+dist/
+*.spec

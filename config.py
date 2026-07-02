@@ -4,17 +4,25 @@ Values come from .env/environment variables with conservative defaults.
 """
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Set
 
+def app_root() -> Path:
+    """Return the folder that should hold local config and data files."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+ROOT = app_root()
+
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(ROOT / ".env")
 except ImportError:
     pass
-
-ROOT = Path(__file__).parent
 
 
 def _int_env(name: str, default: int) -> int:
