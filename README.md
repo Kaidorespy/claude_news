@@ -1,3 +1,6 @@
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/8ff6cbbc-c2c8-46ad-9961-591aabf033e4" />
+
+
 # Claude News Feed
 
 A cyberpunk terminal-style news aggregator for Anthropic/Claude updates.
